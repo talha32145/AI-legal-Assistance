@@ -14,13 +14,12 @@ import json
 from datetime import datetime
 import nltk
 
-# Download required NLTK resources
+# Download NLTK data
 nltk.download("stopwords")
 nltk.download("wordnet")
 nltk.download("omw-1.4")
 
-
-
+# ----------------------- AUTH FUNCTIONS -----------------------
 
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
@@ -46,10 +45,11 @@ def authenticate(email, password):
     password_hash = hash_password(password)
     user = df[(df["email"] == email) & (df["password_hash"] == password_hash)]
     if not user.empty:
-        return user.iloc[0]["username"]  
+        return user.iloc[0]["username"]  # Return username instead of boolean
     return None
 
 
+# ----------------------- CHAT STORAGE FUNCTIONS -----------------------
 
 def load_user_chats(email):
     """Load user's chats from file"""
@@ -81,13 +81,14 @@ def save_user_chats(email, chats):
 
 def generate_chat_title(first_message):
     """Generate a meaningful chat title from the first message"""
-    words = first_message.split()[:10]  
+    words = first_message.split()[:5]  # Take first 5 words
     title = " ".join(words)
     if len(title) > 30:
         title = title[:30] + "..."
     return title if title else "New Chat"
 
 
+# ----------------------- PAGE SETTINGS -----------------------
 
 st.set_page_config(
     page_title="PakLaw Assist",
@@ -96,7 +97,9 @@ st.set_page_config(
 )
 
 
+# ----------------------- SIMPLE AUTH SYSTEM -----------------------
 
+# Initialize session states
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 if "user_email" not in st.session_state:
@@ -109,7 +112,10 @@ if "current_chat_id" not in st.session_state:
     st.session_state.current_chat_id = None
 if "chat_started" not in st.session_state:
     st.session_state.chat_started = False
+if "signup_success" not in st.session_state:
+    st.session_state.signup_success = False
 
+# Top-right auth section
 st.markdown("""
     <style>
         .top-right-auth {
@@ -144,8 +150,10 @@ else:
 
 st.markdown("</div>", unsafe_allow_html=True)
 
+# Logout button in sidebar
 if st.session_state.logged_in:
     if st.sidebar.button("🚪 Logout"):
+        # Save current chat before logging out
         if st.session_state.messages and st.session_state.current_chat_id:
             user_chats = load_user_chats(st.session_state.user_email)
             user_chats[st.session_state.current_chat_id] = {
@@ -159,18 +167,26 @@ if st.session_state.logged_in:
         st.rerun()
 
 
+# ----------------------- AUTH FORMS -----------------------
 
+# Login Form
 if st.session_state.show_login and not st.session_state.logged_in:
     st.title("🔐 Login to PakLaw Assist")
     
+    # Show success message if user just signed up
+    if st.session_state.signup_success:
+        st.success("✅ Account created successfully! Please login with your credentials.")
+        st.session_state.signup_success = False
+    
+    # Tabs for Login/Signup
     tab1, tab2 = st.tabs(["Login", "Sign Up"])
     
     with tab1:
         st.subheader("Login to your account")
         
         with st.form("login_form"):
-            email = st.text_input("Email", placeholder="Enter your email")
-            password = st.text_input("Password", type="password", placeholder="Enter your password")
+            email = st.text_input("Email", placeholder="Enter your email", key="login_email")
+            password = st.text_input("Password", type="password", placeholder="Enter your password", key="login_password")
             
             col1, col2 = st.columns([1, 1])
             with col1:
@@ -207,10 +223,10 @@ if st.session_state.show_login and not st.session_state.logged_in:
         st.subheader("Create your account")
         
         with st.form("signup_form"):
-            username = st.text_input("Username", placeholder="Choose a username")
-            email = st.text_input("Email", placeholder="Enter your email")
-            password = st.text_input("Password", type="password", placeholder="Create a password")
-            confirm = st.text_input("Confirm Password", type="password", placeholder="Confirm your password")
+            username = st.text_input("Username", placeholder="Choose a username", key="signup_username")
+            email = st.text_input("Email", placeholder="Enter your email", key="signup_email")
+            password = st.text_input("Password", type="password", placeholder="Create a password", key="signup_password")
+            confirm = st.text_input("Confirm Password", type="password", placeholder="Confirm your password", key="signup_confirm")
             
             col1, col2 = st.columns([1, 1])
             with col1:
@@ -228,8 +244,9 @@ if st.session_state.show_login and not st.session_state.logged_in:
                             st.error("Email already exists!")
                         else:
                             save_user(username, email, password)
-                            st.success(f"Account created for {username}! Please login now.")
-                            st.session_state.show_login = True
+                            st.success("🎉 Account created successfully! Please login with your credentials.")
+                            st.session_state.signup_success = True
+                            # Switch to login tab automatically
                             st.rerun()
                 else:
                     st.error("Please fill in all fields")
@@ -238,11 +255,13 @@ if st.session_state.show_login and not st.session_state.logged_in:
                 st.session_state.show_login = False
                 st.rerun()
 
+    # Back button
     if st.button("← Back to Main Page"):
         st.session_state.show_login = False
         st.rerun()
 
 
+# ----------------------- LOAD MODEL -----------------------
 
 load_dotenv("Secret_key.env")
 My_key = os.getenv("YOUR_API_KEY")
@@ -254,10 +273,12 @@ model = Genai.GenerativeModel(
 )
 
 
+# ----------------------- LOAD CSV DATA -----------------------
 
 df = pd.read_csv("AI_legal_assistance.csv")
 
 
+# ----------------------- TEXT PREPROCESSING -----------------------
 
 def preprocessing(text):
     text = text.translate(str.maketrans("", "", string.punctuation))
@@ -274,6 +295,7 @@ vectorizer = TfidfVectorizer()
 X = vectorizer.fit_transform(df["Topic"])
 
 
+# ----------------------- OFFLINE RESPONSE -----------------------
 
 def offline_response(user_input):
     clean_input = preprocessing(user_input)
@@ -286,6 +308,7 @@ def offline_response(user_input):
         return "Sorry, this topic is not available offline."
 
 
+# ----------------------- INTERNET CHECK -----------------------
 
 def check_internet():
     websites = ["https://www.google.com", "https://www.microsoft.com"]
@@ -298,6 +321,7 @@ def check_internet():
     return False
 
 
+# ----------------------- ONLINE BOT -----------------------
 
 def chat_bot(user_input, chat_session):
     prompt = f"""
@@ -359,12 +383,14 @@ Never write long paragraphs.
 No unnecessary formality.
 ❓ WHEN UNSURE
 If you are not fully certain about the latest fees, timings, or district-specific rules, say:
-“I may not have the latest fee/time — do you want typical ranges or should I ask your district?”{user_input}
+“I may not have the latest fee/time — do you want typical ranges or should I ask your district?
+    {user_input}
     """
     response = model.generate_content(prompt)
     return response.text
 
 
+# ----------------------- EMERGENCY MODE -----------------------
 
 def emergency_mode(user_input):
     prompt = f"""
@@ -403,6 +429,7 @@ and wait for the answer.
     return response.text
 
 
+# ----------------------- CHAT UI COLORS -----------------------
 
 st.markdown("""
     <style>
@@ -428,10 +455,12 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
+# ----------------------- SIDEBAR: CHAT HISTORY -----------------------
 
 if st.session_state.logged_in:
     st.sidebar.title("📁 Your Chats")
     
+    # Load user's chats
     if "saved_chats" not in st.session_state:
         st.session_state.saved_chats = load_user_chats(st.session_state.user_email)
     
@@ -441,7 +470,9 @@ if st.session_state.logged_in:
     if "chat_session" not in st.session_state:
         st.session_state.chat_session = {"Province": [], "Problem": []}
 
+    # New Chat Button
     if st.sidebar.button("🆕 New Chat"):
+        # Save current chat if it has messages
         if st.session_state.messages and st.session_state.current_chat_id:
             st.session_state.saved_chats[st.session_state.current_chat_id] = {
                 "title": st.session_state.current_chat_id,
@@ -450,17 +481,21 @@ if st.session_state.logged_in:
             }
             save_user_chats(st.session_state.user_email, st.session_state.saved_chats)
         
+        # Start new chat
         st.session_state.messages = []
         st.session_state.chat_session = {"Province": [], "Problem": []}
         st.session_state.current_chat_id = None
         st.session_state.chat_started = False
         st.rerun()
 
+    # Search chats
     query = st.sidebar.text_input("🔍 Search")
 
+    # Display user's chats
     if not st.session_state.saved_chats:
         st.sidebar.caption("No chats saved yet. Start a new conversation!")
     else:
+        # Sort chats by timestamp (newest first)
         sorted_chats = sorted(
             st.session_state.saved_chats.items(),
             key=lambda x: x[1].get("timestamp", ""),
@@ -471,6 +506,7 @@ if st.session_state.logged_in:
             chat_title = chat_data.get("title", chat_id)
             if query.lower() in chat_title.lower():
                 if st.sidebar.button(f"💬 {chat_title}", key=chat_id):
+                    # Save current chat before switching
                     if st.session_state.messages and st.session_state.current_chat_id:
                         st.session_state.saved_chats[st.session_state.current_chat_id] = {
                             "title": st.session_state.current_chat_id,
@@ -478,15 +514,18 @@ if st.session_state.logged_in:
                             "timestamp": datetime.now().isoformat()
                         }
                     
+                    # Load selected chat
                     st.session_state.messages = chat_data["messages"]
                     st.session_state.current_chat_id = chat_id
                     st.session_state.chat_started = True
                     st.rerun()
 
 
+# ----------------------- MAIN CHAT UI -----------------------
 
+# Show login prompt if not logged in
 if not st.session_state.logged_in and not st.session_state.show_login:
-    st.title(" PakLaw Assist — AI Legal Helper")
+    st.title("🇵🇰 PakLaw Assist — AI Legal Helper")
     st.info("🔐 Please login to start chatting with PakLaw Assist")
     
     col1, col2 = st.columns([1, 1])
@@ -499,11 +538,14 @@ if not st.session_state.logged_in and not st.session_state.show_login:
             st.session_state.show_login = True
             st.rerun()
 
+# Show chat interface if logged in
 elif st.session_state.logged_in:
-    st.title(" PakLaw Assist — AI Legal Helper")
+    st.title("🇵🇰 PakLaw Assist — AI Legal Helper")
     
-    st.success(f"Welcome, {st.session_state.username}!")
+    # Welcome message with username
+    st.success(f"Welcome, {st.session_state.username}! How can I assist you with your legal questions today?")
 
+    # Show messages
     for msg in st.session_state.messages:
         if msg["role"] == "user":
             st.markdown(f"<div class='chat-bubble-user'><b>You:</b> {msg['content']}</div>",
@@ -512,9 +554,11 @@ elif st.session_state.logged_in:
             st.markdown(f"<div class='chat-bubble-bot'><b>PakLaw Assist:</b> {msg['content']}</div>",
                         unsafe_allow_html=True)
 
+    # Chat Input
     user_input = st.chat_input("Ask your legal question…")
 
     if user_input:
+        # Create new chat if this is the first message
         if not st.session_state.chat_started:
             st.session_state.current_chat_id = generate_chat_title(user_input)
             st.session_state.chat_started = True
@@ -533,6 +577,7 @@ elif st.session_state.logged_in:
 
         st.session_state.messages.append({"role": "bot", "content": bot_reply})
 
+        # Save chat after each message
         if st.session_state.current_chat_id:
             st.session_state.saved_chats[st.session_state.current_chat_id] = {
                 "title": st.session_state.current_chat_id,
@@ -540,6 +585,5 @@ elif st.session_state.logged_in:
                 "timestamp": datetime.now().isoformat()
             }
             save_user_chats(st.session_state.user_email, st.session_state.saved_chats)
-
 
         st.rerun()
