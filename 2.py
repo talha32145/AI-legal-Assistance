@@ -12,6 +12,13 @@ from nltk.corpus import stopwords
 import hashlib
 import json
 from datetime import datetime
+import nltk
+
+# Download required NLTK resources
+nltk.download("stopwords")
+nltk.download("wordnet")
+nltk.download("omw-1.4")
+
 
 
 
@@ -533,5 +540,6 @@ elif st.session_state.logged_in:
                 "timestamp": datetime.now().isoformat()
             }
             save_user_chats(st.session_state.user_email, st.session_state.saved_chats)
+
 
         st.rerun()
